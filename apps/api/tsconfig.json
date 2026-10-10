@@ -1,0 +1,12 @@
+{
+  "extends": "@wacc/config/tsconfig/node.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "noUncheckedIndexedAccess": false,
+    "types": ["node", "multer"],
+    "paths": { "@/*": ["src/*"] }
+  },
+  "include": ["src/**/*", "test/**/*", "scripts/**/*", "vitest.config.ts"]
+}

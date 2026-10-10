@@ -1,0 +1,562 @@
+// WhatsApp Cloud API Control Center — database schema.
+//
+// Conventions
+// - UUID primary keys, snake_case tables/columns, camelCase in TypeScript.
+// - Values that come from Meta (template status, quality rating, flow status...) are stored as
+//   strings, not Prisma enums: Meta adds values over time and the local DB is only a cache.
+// - Secrets are never stored in plaintext. `*Ciphertext` columns hold SecretService output.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  DEVELOPER
+  VIEWER
+}
+
+enum ConnectionKind {
+  EMBEDDED_SIGNUP
+  MANUAL
+}
+
+enum ConnectionStatus {
+  ACTIVE
+  ERROR
+  DISCONNECTED
+}
+
+enum MessageDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum WebhookProcessingStatus {
+  PENDING
+  PROCESSED
+  IGNORED
+  FAILED
+  REJECTED
+}
+
+enum ApiLogDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MediaOrigin {
+  UPLOADED
+  RECEIVED
+}
+
+// ─── Identity ────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String
+  passwordHash String    @map("password_hash")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  memberships Membership[]
+  sessions    Session[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+/// A login session. The refresh token rotates on every use; only SHA-256 hashes are stored.
+model Session {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  refreshTokenHash  String    @unique @map("refresh_token_hash")
+  /// Hash of the previous refresh token, used to detect refresh token reuse.
+  previousTokenHash String?   @map("previous_token_hash")
+  userAgent         String?   @map("user_agent")
+  ipAddress         String?   @map("ip_address")
+  expiresAt         DateTime  @map("expires_at")
+  revokedAt         DateTime? @map("revoked_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  lastUsedAt        DateTime  @default(now()) @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([previousTokenHash])
+  @@map("sessions")
+}
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships   Membership[]
+  invitations   Invitation[]
+  connections   MetaConnection[]
+  wabas         WhatsAppBusinessAccount[]
+  phoneNumbers  PhoneNumber[]
+  templates     MessageTemplate[]
+  flows         WhatsAppFlow[]
+  contacts      Contact[]
+  messages      Message[]
+  media         Media[]
+  webhookEvents WebhookEvent[]
+  apiLogs       ApiRequestLog[]
+  auditLogs     AuditLog[]
+
+  @@map("organizations")
+}
+
+model Membership {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  role           Role
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("memberships")
+}
+
+model Invitation {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  email          String
+  role           Role
+  tokenHash      String    @unique @map("token_hash")
+  invitedById    String?   @map("invited_by_id") @db.Uuid
+  expiresAt      DateTime  @map("expires_at")
+  acceptedAt     DateTime? @map("accepted_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("invitations")
+}
+
+// ─── Meta structure ──────────────────────────────────────────────────────────
+
+/// One authenticated link between an organization and Meta: an app + a business token.
+model MetaConnection {
+  id                    String           @id @default(uuid()) @db.Uuid
+  organizationId        String           @map("organization_id") @db.Uuid
+  name                  String
+  kind                  ConnectionKind
+  status                ConnectionStatus @default(ACTIVE)
+  metaAppId             String           @map("meta_app_id")
+  /// Null when the connection uses the platform app (META_APP_ID / META_APP_SECRET).
+  appSecretCiphertext   String?          @map("app_secret_ciphertext")
+  accessTokenCiphertext String           @map("access_token_ciphertext")
+  /// Masked preview such as `EAAJ•••••••93A`. Safe to show.
+  accessTokenPreview    String           @map("access_token_preview")
+  tokenType             String?          @map("token_type")
+  tokenExpiresAt        DateTime?        @map("token_expires_at")
+  /// Scopes reported by /debug_token at the last check.
+  scopes                String[]         @default([])
+  /// `granular_scopes` from /debug_token (scope → target ids).
+  granularScopes        Json?            @map("granular_scopes")
+  lastCheckedAt         DateTime?        @map("last_checked_at")
+  lastError             Json?            @map("last_error")
+  lastSyncedAt          DateTime?        @map("last_synced_at")
+  createdById           String?          @map("created_by_id") @db.Uuid
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businesses   MetaBusiness[]
+  wabas        WhatsAppBusinessAccount[]
+  webhook      WebhookConfig?
+
+  @@index([organizationId])
+  @@map("meta_connections")
+}
+
+model MetaBusiness {
+  id                 String    @id @default(uuid()) @db.Uuid
+  connectionId       String    @map("connection_id") @db.Uuid
+  metaBusinessId     String    @map("meta_business_id")
+  name               String?
+  verificationStatus String?   @map("verification_status")
+  lastSyncedAt       DateTime? @map("last_synced_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  connection MetaConnection            @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  wabas      WhatsAppBusinessAccount[]
+
+  @@unique([connectionId, metaBusinessId])
+  @@map("meta_businesses")
+}
+
+model WhatsAppBusinessAccount {
+  id                         String    @id @default(uuid()) @db.Uuid
+  organizationId             String    @map("organization_id") @db.Uuid
+  connectionId               String    @map("connection_id") @db.Uuid
+  businessId                 String?   @map("business_id") @db.Uuid
+  metaWabaId                 String    @map("meta_waba_id")
+  name                       String?
+  /// Local label; never overwritten by sync.
+  displayLabel               String?   @map("display_label")
+  timezoneId                 String?   @map("timezone_id")
+  currency                   String?
+  messageTemplateNamespace   String?   @map("message_template_namespace")
+  accountReviewStatus        String?   @map("account_review_status")
+  businessVerificationStatus String?   @map("business_verification_status")
+  ownerBusinessName          String?   @map("owner_business_name")
+  ownerBusinessId            String?   @map("owner_business_id")
+  /// Whether the connection's app is subscribed to this WABA's webhooks (last known).
+  appSubscribed              Boolean?  @map("app_subscribed")
+  subscribedApps             Json?     @map("subscribed_apps")
+  raw                        Json?
+  lastSyncedAt               DateTime? @map("last_synced_at")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   MetaConnection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  business     MetaBusiness?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  phoneNumbers PhoneNumber[]
+  templates    MessageTemplate[]
+  flows        WhatsAppFlow[]
+
+  @@unique([organizationId, metaWabaId])
+  @@index([connectionId])
+  @@index([metaWabaId])
+  @@map("whatsapp_business_accounts")
+}
+
+model PhoneNumber {
+  id                        String    @id @default(uuid()) @db.Uuid
+  organizationId            String    @map("organization_id") @db.Uuid
+  wabaId                    String    @map("waba_id") @db.Uuid
+  metaPhoneNumberId         String    @map("meta_phone_number_id")
+  displayPhoneNumber        String?   @map("display_phone_number")
+  verifiedName              String?   @map("verified_name")
+  displayLabel              String?   @map("display_label")
+  status                    String?
+  codeVerificationStatus    String?   @map("code_verification_status")
+  nameStatus                String?   @map("name_status")
+  qualityRating             String?   @map("quality_rating")
+  platformType              String?   @map("platform_type")
+  throughputLevel           String?   @map("throughput_level")
+  messagingLimitTier        String?   @map("messaging_limit_tier")
+  isOfficialBusinessAccount Boolean?  @map("is_official_business_account")
+  lastOnboardedTime         DateTime? @map("last_onboarded_time")
+  raw                       Json?
+  lastSyncedAt              DateTime? @map("last_synced_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  waba            WhatsAppBusinessAccount @relation(fields: [wabaId], references: [id], onDelete: Cascade)
+  businessProfile BusinessProfile?
+  messages        Message[]
+  media           Media[]
+  contacts        Contact[]
+
+  @@unique([organizationId, metaPhoneNumberId])
+  @@index([wabaId])
+  @@index([metaPhoneNumberId])
+  @@map("phone_numbers")
+}
+
+model BusinessProfile {
+  id                String    @id @default(uuid()) @db.Uuid
+  phoneNumberId     String    @unique @map("phone_number_id") @db.Uuid
+  about             String?
+  address           String?
+  description       String?
+  email             String?
+  vertical          String?
+  websites          String[]  @default([])
+  profilePictureUrl String?   @map("profile_picture_url")
+  lastSyncedAt      DateTime? @map("last_synced_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  phoneNumber PhoneNumber @relation(fields: [phoneNumberId], references: [id], onDelete: Cascade)
+
+  @@map("business_profiles")
+}
+
+/// Local cache of a Meta message template. Components are stored as the JSON Meta returns:
+/// Meta is the authority for their structure, so they are not normalized into rows.
+model MessageTemplate {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  wabaId           String    @map("waba_id") @db.Uuid
+  metaTemplateId   String?   @map("meta_template_id")
+  name             String
+  language         String
+  category         String
+  /// Category requested on creation, when Meta re-categorized the template.
+  previousCategory String?   @map("previous_category")
+  parameterFormat  String?   @map("parameter_format")
+  status           String
+  components       Json
+  qualityScore     String?   @map("quality_score")
+  rejectedReason   String?   @map("rejected_reason")
+  subCategory      String?   @map("sub_category")
+  lastSyncedAt     DateTime? @map("last_synced_at")
+  /// Set when Meta no longer returns the template (deleted outside the app).
+  remoteDeletedAt  DateTime? @map("remote_deleted_at")
+  createdById      String?   @map("created_by_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  waba         WhatsAppBusinessAccount @relation(fields: [wabaId], references: [id], onDelete: Cascade)
+
+  @@unique([wabaId, name, language])
+  @@index([organizationId, status])
+  @@index([metaTemplateId])
+  @@map("message_templates")
+}
+
+model WhatsAppFlow {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  wabaId           String    @map("waba_id") @db.Uuid
+  metaFlowId       String    @map("meta_flow_id")
+  name             String
+  status           String
+  categories       String[]  @default([])
+  jsonVersion      String?   @map("json_version")
+  dataApiVersion   String?   @map("data_api_version")
+  endpointUri      String?   @map("endpoint_uri")
+  validationErrors Json?     @map("validation_errors")
+  previewUrl       String?   @map("preview_url")
+  previewExpiresAt DateTime? @map("preview_expires_at")
+  /// Last flow JSON uploaded by this app or downloaded from Meta.
+  flowJson         Json?     @map("flow_json")
+  lastSyncedAt     DateTime? @map("last_synced_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  waba         WhatsAppBusinessAccount @relation(fields: [wabaId], references: [id], onDelete: Cascade)
+
+  @@unique([wabaId, metaFlowId])
+  @@index([organizationId])
+  @@map("whatsapp_flows")
+}
+
+// ─── Webhooks ────────────────────────────────────────────────────────────────
+
+/// Per-connection webhook endpoint, used when a connection brings its own Meta app (manual
+/// setup). Connections using the platform app receive events at `/webhooks/meta`.
+model WebhookConfig {
+  id                    String    @id @default(uuid()) @db.Uuid
+  connectionId          String    @unique @map("connection_id") @db.Uuid
+  /// Public, unguessable path segment: `/webhooks/meta/c/:endpointKey`.
+  endpointKey           String    @unique @map("endpoint_key")
+  verifyTokenCiphertext String    @map("verify_token_ciphertext")
+  verifyTokenPreview    String    @map("verify_token_preview")
+  verifiedAt            DateTime? @map("verified_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  connection MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@map("webhook_configs")
+}
+
+/// One webhook delivery (one POST from Meta). Filter fields come from the first change.
+model WebhookEvent {
+  id                String                  @id @default(uuid()) @db.Uuid
+  organizationId    String?                 @map("organization_id") @db.Uuid
+  /// Endpoint that received it: `platform` or a WebhookConfig endpointKey.
+  endpoint          String
+  object            String?
+  field             String?
+  /// Finer type, e.g. `messages.text`, `statuses.delivered`, `message_template_status_update`.
+  eventType         String?                 @map("event_type")
+  metaWabaId        String?                 @map("meta_waba_id")
+  metaPhoneNumberId String?                 @map("meta_phone_number_id")
+  signatureValid    Boolean                 @map("signature_valid")
+  processingStatus  WebhookProcessingStatus @default(PENDING) @map("processing_status")
+  responseStatus    Int                     @map("response_status")
+  payload           Json
+  headers           Json
+  processingLog     Json                    @default("[]") @map("processing_log")
+  error             String?
+  attempts          Int                     @default(0)
+  receivedAt        DateTime                @default(now()) @map("received_at")
+  processedAt       DateTime?               @map("processed_at")
+
+  organization Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  statusEvents MessageStatusEvent[]
+
+  @@index([organizationId, receivedAt(sort: Desc)])
+  @@index([organizationId, field])
+  @@index([metaPhoneNumberId])
+  @@map("webhook_events")
+}
+
+// ─── Messaging ───────────────────────────────────────────────────────────────
+
+/// A WhatsApp user we exchanged messages with, scoped to one business phone number.
+model Contact {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  phoneNumberId  String    @map("phone_number_id") @db.Uuid
+  waId           String    @map("wa_id")
+  profileName    String?   @map("profile_name")
+  lastMessageAt  DateTime? @map("last_message_at")
+  /// Last inbound message: start of the 24h customer service window.
+  lastInboundAt  DateTime? @map("last_inbound_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNumber  PhoneNumber  @relation(fields: [phoneNumberId], references: [id], onDelete: Cascade)
+  messages     Message[]
+
+  @@unique([phoneNumberId, waId])
+  @@index([organizationId, lastMessageAt(sort: Desc)])
+  @@map("contacts")
+}
+
+model Message {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  phoneNumberId  String           @map("phone_number_id") @db.Uuid
+  contactId      String?          @map("contact_id") @db.Uuid
+  webhookEventId String?          @map("webhook_event_id") @db.Uuid
+  /// `wamid.*` assigned by Meta. Null when the send request failed before Meta accepted it.
+  wamid          String?          @unique
+  direction      MessageDirection
+  /// Business display number for outbound, user's wa_id for inbound.
+  sender         String
+  recipient      String
+  type           String
+  payload        Json
+  /// Outbound: accepted | sent | delivered | read | failed. Inbound: received.
+  status         String
+  error          Json?
+  pricing        Json?
+  conversation   Json?
+  sentById       String?          @map("sent_by_id") @db.Uuid
+  metaTimestamp  DateTime?        @map("meta_timestamp")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNumber  PhoneNumber          @relation(fields: [phoneNumberId], references: [id], onDelete: Cascade)
+  contact      Contact?             @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  webhookEvent WebhookEvent?        @relation(fields: [webhookEventId], references: [id], onDelete: SetNull)
+  statusEvents MessageStatusEvent[]
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([contactId, createdAt])
+  @@index([phoneNumberId, createdAt])
+  @@map("messages")
+}
+
+model MessageStatusEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  messageId      String?  @map("message_id") @db.Uuid
+  /// Kept even if we never saw the original message (sent by another system).
+  wamid          String
+  status         String
+  recipientId    String?  @map("recipient_id")
+  errors         Json?
+  pricing        Json?
+  conversation   Json?
+  metaTimestamp  DateTime @map("meta_timestamp")
+  webhookEventId String?  @map("webhook_event_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  message      Message?      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  webhookEvent WebhookEvent? @relation(fields: [webhookEventId], references: [id], onDelete: SetNull)
+
+  @@unique([wamid, status, metaTimestamp])
+  @@index([messageId])
+  @@map("message_status_events")
+}
+
+model Media {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  phoneNumberId  String      @map("phone_number_id") @db.Uuid
+  metaMediaId    String      @map("meta_media_id")
+  origin         MediaOrigin
+  mimeType       String?     @map("mime_type")
+  fileSize       Int?        @map("file_size")
+  sha256         String?
+  fileName       String?     @map("file_name")
+  /// Set when deleted through the app or when Meta reports it no longer exists.
+  deletedAt      DateTime?   @map("deleted_at")
+  uploadedById   String?     @map("uploaded_by_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNumber  PhoneNumber  @relation(fields: [phoneNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([phoneNumberId, metaMediaId])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@map("media")
+}
+
+// ─── Observability ───────────────────────────────────────────────────────────
+
+model ApiRequestLog {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String?         @map("organization_id") @db.Uuid
+  requestId      String          @map("request_id")
+  direction      ApiLogDirection
+  method         String
+  /// Sanitized URL: tokens/secrets in query strings are redacted.
+  url            String
+  statusCode     Int?            @map("status_code")
+  durationMs     Int             @map("duration_ms")
+  requestBody    Json?           @map("request_body")
+  responseBody   Json?           @map("response_body")
+  metaTraceId    String?         @map("meta_trace_id")
+  errorCode      Int?            @map("error_code")
+  actorId        String?         @map("actor_id") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([requestId])
+  @@map("api_request_logs")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  actorId        String?  @map("actor_id") @db.Uuid
+  action         String
+  resource       String
+  resourceId     String?  @map("resource_id")
+  metadata       Json     @default("{}")
+  ipAddress      String?  @map("ip_address")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
