@@ -1,0 +1,99 @@
+# Local development: `docker compose up`
+# - postgres: PostgreSQL 17
+# - setup:    installs dependencies (Linux binaries) into named volumes and builds shared packages
+# - api:      NestJS with hot reload, runs migrations on start
+# - www:      Vite dev server with HMR, proxies /api to the API
+#
+# Source code is bind-mounted; node_modules live in named volumes so host (Windows/macOS)
+# and container binaries never mix.
+
+x-workspace: &workspace
+  image: wacc-dev:latest
+  build:
+    context: .
+    dockerfile: docker/dev.Dockerfile
+  working_dir: /workspace
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:-wacc}:${POSTGRES_PASSWORD:-wacc}@postgres:5432/${POSTGRES_DB:-wacc}?schema=public
+    # File watching over bind mounts (Docker Desktop on Windows/macOS) needs polling.
+    CHOKIDAR_USEPOLLING: "true"
+    TSC_WATCHFILE: DynamicPriorityPolling
+    WATCHPACK_POLLING: "true"
+  volumes:
+    - .:/workspace
+    - nm_root:/workspace/node_modules
+    - nm_api:/workspace/apps/api/node_modules
+    - nm_www:/workspace/apps/www/node_modules
+    - nm_types:/workspace/packages/types/node_modules
+    - nm_ui:/workspace/packages/ui/node_modules
+    - nm_client:/workspace/packages/api-client/node_modules
+    - nm_config:/workspace/packages/config/node_modules
+    - pnpm_store:/pnpm/store
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wacc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wacc}
+      POSTGRES_DB: ${POSTGRES_DB:-wacc}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wacc} -d ${POSTGRES_DB:-wacc}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  setup:
+    <<: *workspace
+    command: sh -c "pnpm install --frozen-lockfile && pnpm --filter @wacc/types build && pnpm --filter @wacc/api exec prisma generate"
+    restart: "no"
+
+  api:
+    <<: *workspace
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wacc}:${POSTGRES_PASSWORD:-wacc}@postgres:5432/${POSTGRES_DB:-wacc}?schema=public
+      API_PORT: 3000
+      TSC_WATCHFILE: DynamicPriorityPolling
+      CHOKIDAR_USEPOLLING: 'true'
+    command: sh -c "pnpm --filter @wacc/api exec prisma migrate deploy && pnpm --filter @wacc/api dev"
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  www:
+    <<: *workspace
+    command: pnpm --filter @wacc/www dev --host 0.0.0.0 --port 5173
+    environment:
+      VITE_API_PROXY_TARGET: http://api:3000
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+
+volumes:
+  pg_data:
+  pnpm_store:
+  nm_root:
+  nm_api:
+  nm_www:
+  nm_types:
+  nm_ui:
+  nm_client:
+  nm_config:

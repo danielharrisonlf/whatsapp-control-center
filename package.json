@@ -1,0 +1,40 @@
+{
+  "name": "wacc",
+  "private": true,
+  "description": "WhatsApp Cloud API Control Center",
+  "packageManager": "pnpm@10.11.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "api:generate": "pnpm --filter @wacc/api openapi:export && pnpm --filter @wacc/api-client generate",
+    "db:migrate": "pnpm --filter @wacc/api prisma:migrate",
+    "db:deploy": "pnpm --filter @wacc/api prisma:deploy"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "turbo": "2.11.6",
+    "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "@swc/core",
+      "esbuild",
+      "@nestjs/core"
+    ],
+    "patchedDependencies": {
+      "nestjs-zod@5.5.0": "patches/nestjs-zod@5.5.0.patch"
+    }
+  }
+}
