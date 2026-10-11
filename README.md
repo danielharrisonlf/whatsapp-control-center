@@ -1,4 +1,4 @@
-# WhatsApp Cloud API Control Center
+# WhatsApp Control Center
 
 A control panel for the **WhatsApp Business Platform (Cloud API)**: connect Meta, then manage WhatsApp Business Accounts, phone numbers, business profiles, message templates (with a live WhatsApp preview), flows, media, messages and webhooks in one place, with diagnostics that say exactly what is wrong.
 
@@ -80,7 +80,8 @@ Key decisions:
 ## Installation
 
 ```bash
-git clone <repo> && cd <repo>
+git clone https://github.com/danielharrisonlf/whatsapp-control-center.git
+cd whatsapp-control-center
 corepack enable
 pnpm install
 cp .env.example .env
