@@ -1,0 +1,331 @@
+@import "tailwindcss";
+@import "@fontsource-variable/ibm-plex-sans";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+@source "../../../packages/ui/src";
+
+/* `dark:` follows the chosen theme (data-theme is always set by lib/theme), not the OS setting. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Design tokens. Light is the base; dark redefines only tokens (same semantic names),
+ * both under prefers-color-scheme (system) and [data-theme] (explicit choice).
+ * Cool graphite neutrals, one green accent used for primary actions, selection and state.
+ */
+:root {
+  --canvas: #eceef1;
+  --surface: #ffffff;
+  --raised: #f6f7f8;
+  --sunken: #eceef1;
+  --overlay: #ffffff;
+  --border: #e3e6ea;
+  --border-strong: #cdd2d8;
+  --fg: #14171a;
+  --muted: #535b65;
+  --subtle: #6b737d;
+
+  --accent: #0f7b5a;
+  --accent-hover: #0c6a4d;
+  --accent-active: #0a5940;
+  --accent-soft: #e4f2ec;
+  --accent-text: #0b6a4d;
+  --accent-fg: #ffffff;
+  --ring: #0f7b5a;
+
+  --success: #16884f;
+  --success-soft: #e3f4ea;
+  --success-text: #0f6b3d;
+  --warning: #c98500;
+  --warning-soft: #fdf1d8;
+  --warning-text: #7a4f00;
+  --danger: #c93030;
+  --danger-hover: #b02727;
+  --danger-soft: #fbe7e6;
+  --danger-text: #b02727;
+  --info: #2c64c8;
+  --info-soft: #e5edfb;
+  --info-text: #234f9e;
+
+  /* Validated with the dataviz palette checker (light surface). Order: sent, delivered, read, failed. */
+  --chart-1: #2c64c8;
+  --chart-2: #0f7b5a;
+  --chart-3: #8a5cd1;
+  --chart-4: #c93030;
+  --chart-5: #6b737d;
+
+  --shadow-xs: 0 1px 1px rgb(20 23 26 / 0.04);
+  --shadow-overlay: 0 1px 2px rgb(20 23 26 / 0.06), 0 8px 24px -6px rgb(20 23 26 / 0.16);
+
+  /* WhatsApp preview (mimics the real client, not our palette). */
+  --wa-wallpaper: #efeae2;
+  --wa-doodle: rgb(0 0 0 / 0.045);
+  --wa-bubble: #ffffff;
+  --wa-bubble-out: #d9fdd3;
+  --wa-text: #111b21;
+  --wa-meta: #667781;
+  --wa-link: #027eb5;
+  --wa-header: #ffffff;
+  --wa-divider: #e9edef;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #0c0e11;
+    --surface: #131619;
+    --raised: #1a1e22;
+    --sunken: #0f1114;
+    --overlay: #1d2126;
+    --border: #262b31;
+    --border-strong: #353c45;
+    --fg: #e4e7eb;
+    --muted: #a2aab4;
+    --subtle: #87909b;
+    --accent: #3fb984;
+    --accent-hover: #4fc792;
+    --accent-active: #36a674;
+    --accent-soft: #15291f;
+    --accent-text: #5fd29f;
+    --accent-fg: #06130d;
+    --ring: #3fb984;
+    --success: #43c084;
+    --success-soft: #142a1f;
+    --success-text: #64d39e;
+    --warning: #e3a63a;
+    --warning-soft: #2c2312;
+    --warning-text: #f0bf62;
+    --danger: #e5534b;
+    --danger-hover: #d2443d;
+    --danger-soft: #331816;
+    --danger-text: #f2827b;
+    --info: #5b93ea;
+    --info-soft: #152238;
+    --info-text: #8ab3f3;
+    --chart-1: #4f86dc;
+    --chart-2: #2f9e6c;
+    --chart-3: #9171d6;
+    --chart-4: #d9534c;
+    --chart-5: #87909b;
+    --shadow-xs: 0 1px 1px rgb(0 0 0 / 0.3);
+    --shadow-overlay: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -8px rgb(0 0 0 / 0.6);
+    --wa-wallpaper: #0b141a;
+    --wa-doodle: rgb(255 255 255 / 0.03);
+    --wa-bubble: #202c33;
+    --wa-bubble-out: #005c4b;
+    --wa-text: #e9edef;
+    --wa-meta: #8696a0;
+    --wa-link: #53bdeb;
+    --wa-header: #202c33;
+    --wa-divider: #2a3942;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --canvas: #0c0e11;
+  --surface: #131619;
+  --raised: #1a1e22;
+  --sunken: #0f1114;
+  --overlay: #1d2126;
+  --border: #262b31;
+  --border-strong: #353c45;
+  --fg: #e4e7eb;
+  --muted: #a2aab4;
+  --subtle: #87909b;
+  --accent: #3fb984;
+  --accent-hover: #4fc792;
+  --accent-active: #36a674;
+  --accent-soft: #15291f;
+  --accent-text: #5fd29f;
+  --accent-fg: #06130d;
+  --ring: #3fb984;
+  --success: #43c084;
+  --success-soft: #142a1f;
+  --success-text: #64d39e;
+  --warning: #e3a63a;
+  --warning-soft: #2c2312;
+  --warning-text: #f0bf62;
+  --danger: #e5534b;
+  --danger-hover: #d2443d;
+  --danger-soft: #331816;
+  --danger-text: #f2827b;
+  --info: #5b93ea;
+  --info-soft: #152238;
+  --info-text: #8ab3f3;
+  --chart-1: #4f86dc;
+  --chart-2: #2f9e6c;
+  --chart-3: #9171d6;
+  --chart-4: #d9534c;
+  --chart-5: #87909b;
+  --shadow-xs: 0 1px 1px rgb(0 0 0 / 0.3);
+  --shadow-overlay: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -8px rgb(0 0 0 / 0.6);
+  --wa-wallpaper: #0b141a;
+  --wa-doodle: rgb(255 255 255 / 0.03);
+  --wa-bubble: #202c33;
+  --wa-bubble-out: #005c4b;
+  --wa-text: #e9edef;
+  --wa-meta: #8696a0;
+  --wa-link: #53bdeb;
+  --wa-header: #202c33;
+  --wa-divider: #2a3942;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-overlay: var(--overlay);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-accent-fg: var(--accent-fg);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-text: var(--success-text);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-text: var(--warning-text);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-text: var(--danger-text);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-text: var(--info-text);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --shadow-xs: var(--shadow-xs);
+  --shadow-overlay: var(--shadow-overlay);
+
+  --animate-in-fade: in-fade 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-in-pop: in-pop 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-in-right: in-right 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-in-left: in-left 220ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes in-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes in-pop {
+    from {
+      opacity: 0;
+      transform: translateY(-2px) scale(0.98);
+    }
+  }
+  @keyframes in-right {
+    from {
+      transform: translateX(16px);
+      opacity: 0;
+    }
+  }
+  @keyframes in-left {
+    from {
+      transform: translateX(-16px);
+      opacity: 0;
+    }
+  }
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--canvas);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv05" 1;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 28%, transparent);
+    color: var(--fg);
+  }
+  :focus-visible {
+    outline-color: var(--ring);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  input,
+  textarea {
+    caret-color: var(--accent);
+  }
+  a {
+    text-underline-offset: 3px;
+  }
+  .tabular,
+  td,
+  time {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Theme switches must not animate every hover transition at once. */
+  .theme-switching *,
+  .theme-switching *::before,
+  .theme-switching *::after {
+    transition: none !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      transition-duration: 1ms !important;
+    }
+  }
+}
+
+/* CodeMirror inherits the palette. */
+.cm-editor {
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 12.5px;
+}
+.cm-editor .cm-gutters {
+  background: var(--raised);
+  color: var(--subtle);
+  border-right: 1px solid var(--border);
+}
+.cm-editor.cm-focused {
+  outline: none;
+}
+.cm-editor .cm-activeLine,
+.cm-editor .cm-activeLineGutter {
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
+}
+.cm-editor .cm-cursor {
+  border-left-color: var(--accent);
+}
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in oklab, var(--accent) 22%, transparent) !important;
+}
+.cm-editor .cm-scroller {
+  font-family: var(--font-mono);
+}
+.cm-tooltip {
+  background: var(--overlay) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--fg);
+}

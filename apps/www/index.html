@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Central de controle do WhatsApp</title>
+    <script>
+      // Apply the saved theme before first paint (no flash).
+      try {
+        var locale = localStorage.getItem('wacc.locale') === 'en' ? 'en' : 'pt-BR';
+        document.documentElement.lang = locale;
+        document.title = locale === 'en' ? 'WhatsApp Control Center' : 'Central de controle do WhatsApp';
+      } catch (e) {}
+      try {
+        var t = localStorage.getItem('wacc.theme') || 'system';
+        var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
