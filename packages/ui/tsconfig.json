@@ -1,0 +1,4 @@
+{
+  "extends": "@wacc/config/tsconfig/react.json",
+  "include": ["src"]
+}
